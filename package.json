@@ -1,0 +1,46 @@
+{
+  "name": "paseo-plugin-pele",
+  "version": "0.1.0",
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "index.client.ts",
+    "index.client.tsx",
+    "index.server.ts",
+    "index.server.tsx",
+    "client/",
+    "server/",
+    "shared/",
+    "README.md",
+    "example.md",
+    "images/",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test"
+  },
+  "dependencies": {
+    "marked": "18.1.1",
+    "pele": "1.7.0"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.11.4",
+    "@types/bun": "^1.2.22",
+    "@types/node": "^24.3.0",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  },
+  "description": "Render Mermaid and Pele code blocks as interactive SVG inside Paseo chat.",
+  "author": "sojuhub",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sojuhub/paseo-plugin-pele.git"
+  }
+}

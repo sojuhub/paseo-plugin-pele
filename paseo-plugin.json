@@ -1,0 +1,19 @@
+{
+  "id": "pele",
+  "name": "Pele",
+  "media": [
+    "images/preview.png"
+  ],
+  "requirements": {
+    "paseo": ">=0.11.4"
+  },
+  "description": "Render Mermaid and Pele code blocks as interactive SVG inside Paseo chat.",
+  "build": [
+    [
+      "npm",
+      "ci",
+      "--omit=dev",
+      "--ignore-scripts"
+    ]
+  ]
+}
