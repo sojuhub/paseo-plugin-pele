@@ -97,10 +97,13 @@ See [example.md](example.md).
 Pele rendering tests. The 33 diagram-family fixtures are smoke tests, not an
 exhaustive guarantee for every Mermaid construct.
 
-Actual local Paseo browser checks covered two inline assistant diagrams, user
-diagrams, zoom/pan/fit, expanded view, source view/copy, invalid-input recovery,
-light/dark themes, 390 px layout, slash command and a workspace Markdown file
-containing prose, a table and two diagrams.
+Version 0.2 browser checks rendered 24 standard diagram-family fixtures through
+the actual bundled Mermaid runtime. The Paseo panel was checked for natural
+inline height, zoom, keyboard pan, centered reset, fullscreen, Escape, invalid-input
+recovery, light/dark themes and a settled 390 px layout. TypeScript and 56 unit
+tests pass. The original inline-message parsing and workspace file boundaries
+remain covered by the unit tests; the full live assistant streaming and file-loading
+flows verified in 0.1 were not repeated for this revision.
 
 Real native-mobile rendering, every Mermaid syntax variant, every other
 timeline-transforming plugin combination and packaged Electron UI were not
