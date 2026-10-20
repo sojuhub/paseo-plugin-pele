@@ -5,3 +5,8 @@ Requires Paseo 0.11.4 or later with plugins enabled and a desktop/web client. Na
 Pele has its own Mermaid syntax coverage and layout. Paseo's built-in file preview and tool-output widgets are not replaced. Paseo gives an entire message to the first matching timeline plugin, so Gen-UI blocks and Pele diagrams in one response currently require separate messages. Surrounding prose supports standard text, tables, lists and code, without all host-specific Markdown actions.
 
 The daemon needs npm for installation. Locked dependencies are installed from the npm registry with lifecycle scripts disabled. Rendering runs in the client without a rendering service. The plugin does not send additional prompts or tool results to agent providers; normal Paseo conversations retain their configured provider behavior.
+
+Standard diagrams use Paseo 0.11.4’s sandboxed Mermaid renderer for its original
+light/dark design and edge routing. Pele-specific dialects keep the Pele engine.
+Long diagrams are no longer shrunk into a fixed-height preview. The renderer
+is bundled locally and makes no external rendering requests.

@@ -1,14 +1,13 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { copyText, Icon, useToast } from "@getpaseo/plugin/client/react-native";
-import { createElement, useEffect, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Text, View, ScrollView, Modal, useWindowDimensions } from "react-native";
-import { mount, renderOptions, type Mounted } from "../shared/render";
+import { diagramPalette, fitDiagram, zoomAt, type DiagramSize } from "../shared/presentation";
+import { MermaidSurface } from "./mermaid.client";
+import { renderVector, usesPeleEngine } from "../shared/render";
 
 type Props = { source: string; phase?: "streaming" | "complete"; theme: PluginTheme; compact: boolean };
-type WebSurface = Parameters<typeof mount>[0] & {
-  clientWidth: number;
-  querySelector(selector: "svg"): { style: { width: string; height: string; maxWidth: string; flexShrink: string } } | null;
-};
+const REST = { zoom: 1, x: 0, y: 0 };
 
 function IconButton({ label, icon, disabled, onPress, theme, compact }: {
   label: string; icon: string; disabled?: boolean; onPress(): void; theme: PluginTheme; compact: boolean;
@@ -43,102 +42,93 @@ function DiagramBody({ source, phase = "complete", theme, compact, fullscreen = 
   const [showSource, setShowSource] = useState(Platform.OS !== "web");
   const [stableSource, setStableSource] = useState(source);
   const [error, setError] = useState("");
-  const [kind, setKind] = useState("");
-  const [scale, setScale] = useState(1);
+  const [ready, setReady] = useState(false);
+  const [size, setSize] = useState<DiagramSize>({ width: 240, height: 180 });
+  const [availableWidth, setAvailableWidth] = useState(0);
+  const [transform, setTransform] = useState(REST);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [touched, setTouched] = useState(false);
-  const [fitScale, setFitScale] = useState(1);
-  const [availableWidth, setAvailableWidth] = useState(0);
-  const [height, setHeight] = useState(180);
-  const host = useRef<WebSurface | null>(null);
-  const diagram = useRef<Mounted | null>(null);
-  const naturalWidth = useRef(0);
-  const focusTarget = useRef<{ focus(): void } | null>(null);
-  useEffect(() => { if (fullscreen) focusTarget.current?.focus(); }, [fullscreen]);
-  const latestSource = useRef(stableSource);
-  latestSource.current = stableSource;
+  const host = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const focusTarget = useRef<HTMLDivElement>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
   const toast = useToast();
   const windowSize = useWindowDimensions();
-  const maxHeight = fullscreen ? Math.max(180, windowSize.height - 32) : 420;
-  const ready = !!kind && !error;
+  const maxHeight = fullscreen ? Math.max(180, windowSize.height - (compact ? 64 : 32)) : undefined;
+  const fitted = fitDiagram(size, Math.max(1, availableWidth - (fullscreen ? 32 : 0)), maxHeight);
+  const height = maxHeight ?? Math.max(100, size.height * fitted);
+  const palette = diagramPalette(theme.colors.surface0);
+  const pele = usesPeleEngine(stableSource);
+  const onRendered = useCallback((next: DiagramSize) => {
+    setSize({ width: next.width, height: next.height });
+    setReady(true); setError(""); setTransform(REST);
+  }, []);
+  const onError = useCallback((message: string) => { setError(message); setReady(false); }, []);
 
+  useEffect(() => { if (fullscreen) focusTarget.current?.focus(); }, [fullscreen]);
+  useEffect(() => { setTransform(REST); pointers.current.clear(); }, [availableWidth, maxHeight, showSource]);
   useEffect(() => {
     if (phase === "complete") { setStableSource(source); return; }
     const timer = setTimeout(() => setStableSource(source), 160);
     return () => clearTimeout(timer);
   }, [source, phase]);
+  useEffect(() => {
+    if (showSource || !pele || !host.current || availableWidth <= 0) return;
+    try {
+      const result = renderVector(stableSource, availableWidth);
+      host.current.innerHTML = result.svg;
+      const svg = host.current.querySelector("svg");
+      if (svg) { svg.style.width = "100%"; svg.style.height = "100%"; svg.style.maxWidth = "none"; }
+      onRendered(result);
+    } catch (reason) { onError(reason instanceof Error ? reason.message : String(reason)); }
+  }, [stableSource, pele, showSource, availableWidth, onRendered, onError]);
 
   useEffect(() => {
-    if (showSource || Platform.OS !== "web" || !host.current) return;
-    const element = host.current;
-    const zoomOptions = { always: true, controls: false, maxScale: 8 };
-    const mounted = mount(element, latestSource.current, {
-      ...renderOptions,
-      zoom: zoomOptions,
-      onRender(result) {
-        naturalWidth.current = result.width;
-        const fitted = Math.min(fullscreen ? Infinity : 1, element.clientWidth / result.width, maxHeight / result.height);
-        zoomOptions.maxScale = fitted * 8;
-        const svg = element.querySelector("svg");
-        if (svg) {
-          svg.style.width = `${result.width * fitted}px`;
-          svg.style.height = "auto";
-          svg.style.maxWidth = "100%";
-          svg.style.flexShrink = "0";
-        }
-        setHeight(Math.max(100, result.height * fitted));
-        setError("");
-        setKind(result.type);
-        setScale(fitted);
-        setFitScale(fitted);
-        diagram.current?.zoom?.refresh();
-      },
-      onError(reason) { setError(reason instanceof Error ? reason.message : String(reason)); },
-    });
-    diagram.current = mounted;
-    mounted.zoom?.refresh();
-    return () => { mounted.destroy(); diagram.current = null; };
-  }, [showSource, maxHeight, availableWidth]);
+    const element = viewport.current;
+    if (!element) return;
+    const wheel = (event: WheelEvent) => {
+      if (!fullscreen && !event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const rect = element.getBoundingClientRect();
+      const point = { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 };
+      setTransform(t => zoomAt(t, Math.max(0.25, Math.min(8, t.zoom * 2 ** (-Math.max(-60, Math.min(60, event.deltaY)) * 0.01))), point));
+    };
+    element.addEventListener("wheel", wheel, { passive: false });
+    return () => element.removeEventListener("wheel", wheel);
+  }, [fullscreen, showSource]);
 
-  useEffect(() => { diagram.current?.update(stableSource); }, [stableSource]);
-
-  function readScale() {
-    // Pele updates zoom during the native pointer/wheel handler.
-    setTimeout(() => { if (diagram.current?.zoom) setScale(diagram.current.zoom.scale); }, 0);
-  }
   function zoom(action: "in" | "out" | "fit") {
-    const control = diagram.current?.zoom;
-    const svg = host.current?.querySelector("svg");
-    if (!control || !svg) return;
-    const target = action === "fit" ? fitScale : Math.min(fitScale * 8,
-      Math.max(fitScale * (fullscreen ? 1 : 0.25), control.scale * (action === "in" ? 1.25 : 0.8)));
-    control.reset();
-    svg.style.width = `${naturalWidth.current * Math.min(target, fitScale)}px`;
-    svg.style.height = "auto";
-    control.refresh();
-    if (target > fitScale) control.zoomTo(target);
-    setScale(control.scale);
+    setTransform(current => action === "fit" ? REST : zoomAt(current,
+      Math.max(0.25, Math.min(8, current.zoom * (action === "in" ? 1.25 : 0.8)))));
   }
   async function copy() {
     try { await copyText(source); toast.show("Code copied."); }
     catch (reason) { toast.error(reason instanceof Error ? reason.message : "Failed to copy code."); }
   }
-
   const visible = hovered || focused || touched || compact || showSource;
   return createElement("div", {
     "data-testid": "pele-diagram", tabIndex: 0, ref: focusTarget,
     onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false),
     onFocusCapture: () => setFocused(true),
-    onBlurCapture: (event: { currentTarget: { contains(node: unknown): boolean }; relatedTarget: unknown }) => {
+    onBlurCapture: (event: React.FocusEvent<HTMLDivElement>) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
     },
-    onPointerDownCapture: (event: { pointerType: string }) => { if (event.pointerType === "touch") setTouched(true); },
-    onKeyDown: (event: { key: string; preventDefault(): void; stopPropagation(): void }) => {
+    onPointerDownCapture: (event: React.PointerEvent) => { if (event.pointerType === "touch") setTouched(true); },
+    onKeyDown: (event: React.KeyboardEvent) => {
       if (event.key === "Escape" && close) { event.preventDefault(); event.stopPropagation(); close(); }
+      if (showSource || !ready) return;
+      if (event.key === "+" || event.key === "=") { event.preventDefault(); zoom("in"); }
+      if (event.key === "-") { event.preventDefault(); zoom("out"); }
+      if (event.key === "0" || event.key === "Home") { event.preventDefault(); zoom("fit"); }
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        setTransform(t => ({ ...t, x: t.x + (event.key === "ArrowLeft" ? 48 : event.key === "ArrowRight" ? -48 : 0),
+          y: t.y + (event.key === "ArrowUp" ? 48 : event.key === "ArrowDown" ? -48 : 0) }));
+      }
     },
     style: { position: "relative", minWidth: 0, minHeight: 56, outline: "none",
-      padding: fullscreen ? 16 : 0, paddingTop: fullscreen ? 16 : compact && !showSource ? 48 : 0,
+      padding: fullscreen ? 16 : 0, paddingTop: compact && !showSource ? 48 : fullscreen ? 16 : 0,
       height: fullscreen ? "100vh" : undefined,
       boxSizing: "border-box", backgroundColor: theme.colors.surface0 },
   }, <>
@@ -151,9 +141,9 @@ function DiagramBody({ source, phase = "complete", theme, compact, fullscreen = 
       opacity: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none",
     } }, <>
       {!showSource && <>
-        <IconButton label="Zoom in" icon="ZoomIn" theme={theme} compact={compact} disabled={!ready || scale >= fitScale * 8 - 0.001} onPress={() => zoom("in")} />
-        <IconButton label="Zoom out" icon="ZoomOut" theme={theme} compact={compact} disabled={!ready || scale <= fitScale * (fullscreen ? 1 : 0.25) + 0.001} onPress={() => zoom("out")} />
-        <IconButton label="Reset view" icon="Scan" theme={theme} compact={compact} disabled={!ready || Math.abs(scale - fitScale) < 0.001} onPress={() => zoom("fit")} />
+        <IconButton label="Zoom in" icon="ZoomIn" theme={theme} compact={compact} disabled={!ready || transform.zoom >= 8} onPress={() => zoom("in")} />
+        <IconButton label="Zoom out" icon="ZoomOut" theme={theme} compact={compact} disabled={!ready || transform.zoom <= 0.25} onPress={() => zoom("out")} />
+        <IconButton label="Reset view" icon="Scan" theme={theme} compact={compact} disabled={!ready} onPress={() => zoom("fit")} />
       </>}
       {!fullscreen && <IconButton label={showSource ? "View diagram" : "View source"} icon={showSource ? "Workflow" : "Code"}
         theme={theme} compact={compact} disabled={Platform.OS !== "web"} onPress={() => setShowSource(!showSource)} />}
@@ -165,28 +155,45 @@ function DiagramBody({ source, phase = "complete", theme, compact, fullscreen = 
       <Text selectable style={{ color: theme.colors.foreground, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
         fontSize: 13, lineHeight: 20, padding: 8 }}>{source}</Text>
     </ScrollView> : createElement("div", {
-      ref: host,
-      "data-testid": "pele-live-svg",
-      "aria-label": "Pele diagram. Drag to pan, control or command wheel to zoom.",
-      onPointerUp: readScale, onKeyUp: readScale,
-      onWheel: (event: { ctrlKey: boolean; metaKey: boolean; deltaY: number }) => {
-        if (fullscreen && !event.ctrlKey && !event.metaKey) {
-          diagram.current?.zoom?.zoomBy(2 ** (Math.max(-24, Math.min(24, -event.deltaY)) * 0.02));
-        }
-        readScale();
+      ref: viewport, "data-testid": "pele-live-svg", role: "img", "aria-label": `Diagram: ${stableSource}`,
+      onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
+        if (event.button !== 0) return;
+        pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        event.currentTarget.setPointerCapture(event.pointerId);
       },
+      onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+        const previous = pointers.current.get(event.pointerId);
+        if (!previous) return;
+        const next = { x: event.clientX, y: event.clientY };
+        const other = [...pointers.current.entries()].find(([id]) => id !== event.pointerId)?.[1];
+        pointers.current.set(event.pointerId, next);
+        if (other) {
+          const oldDistance = Math.hypot(previous.x - other.x, previous.y - other.y);
+          const distance = Math.hypot(next.x - other.x, next.y - other.y);
+          if (oldDistance > 0) setTransform(t => zoomAt(t, Math.max(0.25, Math.min(8, t.zoom * distance / oldDistance))));
+        } else if (event.pointerType !== "touch" || transform.zoom > 1) {
+          setTransform(t => ({ ...t, x: t.x + next.x - previous.x, y: t.y + next.y - previous.y }));
+        }
+      },
+      onPointerUp: (event: React.PointerEvent) => { pointers.current.delete(event.pointerId); },
+      onPointerCancel: (event: React.PointerEvent) => { pointers.current.delete(event.pointerId); },
+      onLostPointerCapture: (event: React.PointerEvent) => { pointers.current.delete(event.pointerId); },
       onDoubleClick: () => zoom("fit"),
-      style: { position: "relative", width: "100%", height: fullscreen ? maxHeight : height,
-        minHeight: 100, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: "system-ui, sans-serif", fontSize: 16,
-        "--pele-bg": theme.colors.surface0, "--pele-fg": theme.colors.foreground,
-        "--pele-muted": theme.colors.foregroundMuted, "--pele-line": theme.colors.foreground,
-        "--pele-surface": theme.colors.surface1, "--pele-surface-alt": theme.colors.surface2,
-        "--pele-border": theme.colors.border, "--pele-accent": theme.colors.accent,
-        "--pele-error": theme.colors.statusDanger },
-    })}
-    {!!error && <Text accessibilityRole="alert" selectable
-      style={{ color: theme.colors.statusDanger, fontSize: 12 }}>
+      style: { position: "relative", width: "100%", height, minHeight: 100, overflow: "hidden",
+        touchAction: transform.zoom > 1 ? "none" : "pan-y", cursor: "grab", userSelect: "none",
+        "--pele-bg": theme.colors.surface0, "--pele-fg": palette.text,
+        "--pele-muted": palette.text, "--pele-line": palette.line,
+        "--pele-surface": palette.node, "--pele-surface-alt": palette.cluster,
+        "--pele-border": palette.border, "--pele-accent": theme.colors.accent,
+        "--pele-radius": "5px", "--pele-error": theme.colors.statusDanger },
+    }, createElement("div", {
+      "data-testid": "diagram-content",
+      style: { position: "absolute", left: "50%", top: "50%", width: size.width, height: size.height,
+        transform: `translate(-50%, -50%) translate(${transform.x}px, ${transform.y}px) scale(${fitted * transform.zoom})`,
+        transformOrigin: "center", visibility: ready && !error ? "visible" : "hidden" },
+    }, pele ? createElement("div", { ref: host, style: { width: "100%", height: "100%" } })
+      : <MermaidSurface source={stableSource} dark={palette.node === "#1f2020"} onRendered={onRendered} onError={onError} />))}
+    {!!error && <Text accessibilityRole="alert" selectable style={{ color: theme.colors.statusDanger, fontSize: 12 }}>
       {phase === "streaming" ? "Rendering diagram…" : `Unable to render diagram: ${error}`}
     </Text>}
   </>);

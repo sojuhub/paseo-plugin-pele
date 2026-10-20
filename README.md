@@ -1,8 +1,10 @@
 # Pele for Paseo
 
 Renders `mermaid` and `pele` fenced blocks directly inside Paseo chat as live SVG.
-It uses Pele 1.7.0 locally in the client, without generating PNGs or calling a
-rendering service. Existing chat history uses the renderer too.
+Standard Mermaid diagrams use the exact sandboxed Mermaid runtime bundled with
+Paseo 0.11.4. Pele-only dialects continue to use Pele 1.7.0. Both run locally,
+without generating PNGs or calling a rendering service. Existing chat history
+uses the renderer too.
 
 ## Install
 
@@ -51,8 +53,11 @@ are removed. Source view provides **View diagram** and an icon for **Copy code**
 Fullscreen fills the browser viewport and has zoom/reset/close icons. Escape
 closes it. Inline Ctrl/Command-wheel zoom, fullscreen wheel zoom, drag and
 keyboard controls remain available; double-click restores the fitted view.
-The source remains Pele SVG, so diagram layout and gesture implementation are
-not a byte-for-byte copy of Mermaid. Multiple diagrams and surrounding Markdown
+Standard diagrams use Mermaid’s original default/light and dark themes, fonts,
+spacing and edge routing. Inline diagrams fit the available width without a
+420px height cap; long diagrams retain their vertical space. Reset view restores
+both scale and centering, including after a pan. The viewport is plugin-owned;
+it is not a copy of every native gesture. Multiple diagrams and surrounding Markdown
 are retained, and incomplete streaming input remains recoverable.
 
 The **Pele** sidebar is a paste-and-preview editor. `/pele path/to/file.md`
@@ -63,9 +68,10 @@ See [example.md](example.md).
 
 ## Compatibility and boundaries
 
-- Pele supports the diagram families listed in its
-  [compatibility guide](https://pele.run/compatibility), with its own layout and
-  syntax differences. It is not a pixel-identical Mermaid engine.
+- Standard Mermaid syntax is rendered by the pinned Paseo runtime. Pele-only
+  agentflow, usecase, railroad, treeView, cynefin, wardley, swimlane, ishikawa and
+  eventmodeling diagrams keep Pele’s layout. Their appearance is not promised
+  identical to Mermaid. See [vendored runtime provenance](client/vendor/NOTICE.md).
 - Paseo 0.11.4 applies the **first matching timeline transformer** to a whole
   message. In the current setup, a response mixing Gen-UI `ui`/`app` blocks and
   diagrams is claimed by Gen-UI; its diagram text is not rendered by Pele.
@@ -78,8 +84,10 @@ See [example.md](example.md).
 - The browser-only component is intentionally guarded by `Platform.OS === "web"`.
   It uses a DOM container because SDK 0.11.4 has no arbitrary SVG component.
   Native mobile clients do not run its chat transformers.
-- Diagram image loading and clickable links are disabled. Labels are escaped by
-  Pele; source length, output length and edge counts are bounded. File access
+- The Mermaid iframe is sandboxed without same-origin access. Its CSP blocks
+  network requests and images; links cannot be interacted with. Strict rendering
+  and source/edge limits stay enabled. The Pele path disables links and images
+  and retains source, output and edge limits. File access
   resolves symlinks and rejects paths outside the workspace. No credentials,
   transcript collection, persistence or background jobs are added.
 
@@ -98,10 +106,8 @@ Real native-mobile rendering, every Mermaid syntax variant, every other
 timeline-transforming plugin combination and packaged Electron UI were not
 separately tested.
 
-## Preview
-
-![Pele preview with icon controls](images/preview.png)
-
 ## License
 
-MIT. Rendering uses [Pele](https://pele.run/) and Markdown parsing uses Marked.
+Plugin code is MIT. Rendering uses [Pele](https://pele.run/) and Mermaid; Markdown
+parsing uses Marked. The vendored Paseo runtime is Apache-2.0, with embedded
+third-party notices retained; see [NOTICE](client/vendor/NOTICE.md).
