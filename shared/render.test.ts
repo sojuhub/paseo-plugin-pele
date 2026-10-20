@@ -70,11 +70,3 @@ test("flowchart edge count over the configured limit is rejected", () => {
 test("invalid source is reported instead of a misleading diagram", () => {
   expect(() => renderVector("not a diagram")).toThrow();
 });
-
-test("standard diagrams use Mermaid while Pele-only dialects remain supported", async () => {
-  const { usesPeleEngine } = await import("./render");
-  expect(usesPeleEngine("flowchart TD\n A --> B")).toBe(false);
-  expect(usesPeleEngine("sequenceDiagram\n A->>B: hello")).toBe(false);
-  expect(usesPeleEngine("agentflow-beta TB\n A --> B")).toBe(true);
-  expect(usesPeleEngine("---\ntitle: Test\n---\ntreeView-beta\n root\n  leaf")).toBe(true);
-});

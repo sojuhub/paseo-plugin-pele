@@ -1,8 +1,8 @@
 # Pele for Paseo
 
 Renders `mermaid` and `pele` fenced blocks directly inside Paseo chat as live SVG.
-Standard Mermaid diagrams use the exact sandboxed Mermaid runtime bundled with
-Paseo 0.11.4. Pele-only dialects continue to use Pele 1.7.0. Both run locally,
+All diagrams use Pele 1.7.0. The viewport is adapted directly from Paseo 0.11.4’s
+Mermaid viewer: centered fit, bounded pan, zoom, toolbar and fullscreen. It runs locally,
 without generating PNGs or calling a rendering service. Existing chat history
 uses the renderer too.
 
@@ -53,11 +53,12 @@ are removed. Source view provides **View diagram** and an icon for **Copy code**
 Fullscreen fills the browser viewport and has zoom/reset/close icons. Escape
 closes it. Inline Ctrl/Command-wheel zoom, fullscreen wheel zoom, drag and
 keyboard controls remain available; double-click restores the fitted view.
-Standard diagrams use Mermaid’s original default/light and dark themes, fonts,
-spacing and edge routing. Inline diagrams fit the available width without a
-420px height cap; long diagrams retain their vertical space. Reset view restores
-both scale and centering, including after a pan. The viewport is plugin-owned;
-it is not a copy of every native gesture. Multiple diagrams and surrounding Markdown
+Pele uses Mermaid-style light/dark colors, 16px labels and explicit flowchart spacing.
+Its graph layout is still Pele's, so SVG geometry is not pixel-identical to Mermaid.
+The native viewport owns all fitting and centering; there is no second transform,
+compact toolbar spacer or iframe. Inline height follows the natural diagram height,
+with a 56px minimum and no 420px cap. Fullscreen uses native 24px fit padding.
+Multiple diagrams and surrounding Markdown
 are retained, and incomplete streaming input remains recoverable.
 
 The **Pele** sidebar is a paste-and-preview editor. `/pele path/to/file.md`
@@ -68,10 +69,8 @@ See [example.md](example.md).
 
 ## Compatibility and boundaries
 
-- Standard Mermaid syntax is rendered by the pinned Paseo runtime. Pele-only
-  agentflow, usecase, railroad, treeView, cynefin, wardley, swimlane, ishikawa and
-  eventmodeling diagrams keep Pele’s layout. Their appearance is not promised
-  identical to Mermaid. See [vendored runtime provenance](client/vendor/NOTICE.md).
+- All supported syntax uses Pele, including its nine extension families.
+  See [viewport provenance](client/vendor/NOTICE.md). No Mermaid runtime is bundled.
 - Paseo 0.11.4 applies the **first matching timeline transformer** to a whole
   message. In the current setup, a response mixing Gen-UI `ui`/`app` blocks and
   diagrams is claimed by Gen-UI; its diagram text is not rendered by Pele.
@@ -84,10 +83,7 @@ See [example.md](example.md).
 - The browser-only component is intentionally guarded by `Platform.OS === "web"`.
   It uses a DOM container because SDK 0.11.4 has no arbitrary SVG component.
   Native mobile clients do not run its chat transformers.
-- The Mermaid iframe is sandboxed without same-origin access. Its CSP blocks
-  network requests and images; links cannot be interacted with. Strict rendering
-  and source/edge limits stay enabled. The Pele path disables links and images
-  and retains source, output and edge limits. File access
+- Pele disables links and images and retains source, output and edge limits. File access
   resolves symlinks and rejects paths outside the workspace. No credentials,
   transcript collection, persistence or background jobs are added.
 
@@ -97,13 +93,12 @@ See [example.md](example.md).
 Pele rendering tests. The 33 diagram-family fixtures are smoke tests, not an
 exhaustive guarantee for every Mermaid construct.
 
-Version 0.2 browser checks rendered 24 standard diagram-family fixtures through
-the actual bundled Mermaid runtime. The Paseo panel was checked for natural
-inline height, zoom, keyboard pan, centered reset, fullscreen, Escape, invalid-input
-recovery, light/dark themes and a settled 390 px layout. TypeScript and 56 unit
-tests pass. The original inline-message parsing and workspace file boundaries
-remain covered by the unit tests; the full live assistant streaming and file-loading
-flows verified in 0.1 were not repeated for this revision.
+The current refactor passes TypeScript and 58 tests, including the upstream viewport
+geometry tests and Pele's 33 diagram-family fixtures. The actual Paseo panel was
+checked at desktop and 390px widths, in light/dark themes, with centered fit/reset,
+keyboard pan, real mouse drag/wheel, fullscreen/Escape and invalid-source recovery.
+No iframe is present. Live token-by-token streaming and workspace file-loading UI
+were not repeated in this revision; their parser and file boundaries remain tested.
 
 Real native-mobile rendering, every Mermaid syntax variant, every other
 timeline-transforming plugin combination and packaged Electron UI were not
@@ -111,6 +106,5 @@ separately tested.
 
 ## License
 
-Plugin code is MIT. Rendering uses [Pele](https://pele.run/) and Mermaid; Markdown
-parsing uses Marked. The vendored Paseo runtime is Apache-2.0, with embedded
-third-party notices retained; see [NOTICE](client/vendor/NOTICE.md).
+Plugin code is MIT. Rendering uses [Pele](https://pele.run/); Markdown
+parsing uses Marked. The adapted Paseo viewport is Apache-2.0; see [NOTICE](client/vendor/NOTICE.md).

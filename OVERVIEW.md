@@ -6,7 +6,7 @@ Pele has its own Mermaid syntax coverage and layout. Paseo's built-in file previ
 
 The daemon needs npm for installation. Locked dependencies are installed from the npm registry with lifecycle scripts disabled. Rendering runs in the client without a rendering service. The plugin does not send additional prompts or tool results to agent providers; normal Paseo conversations retain their configured provider behavior.
 
-Standard diagrams use Paseo 0.11.4’s sandboxed Mermaid renderer for its original
-light/dark design and edge routing. Pele-specific dialects keep the Pele engine.
-Long diagrams are no longer shrunk into a fixed-height preview. The renderer
-is bundled locally and makes no external rendering requests.
+Every diagram uses Pele. Its viewport is adapted directly from Paseo 0.11.4’s
+Mermaid viewer, including centered sizing, bounded pan, hover controls and fullscreen.
+Pele has its own graph layout; exact Mermaid SVG geometry is not claimed.
+Long diagrams retain their natural height, without a fixed-height preview or an iframe.

@@ -9,19 +9,3 @@ export function diagramPalette(background: string) {
     ? { text: "#ccc", line: "#ccc", node: "#1f2020", border: "#ccc", cluster: "#302F3D" }
     : { text: "#333", line: "#333", node: "#ECECFF", border: "#9370DB", cluster: "#ffffde" };
 }
-
-export function fitDiagram(size: { width: number; height: number }, width: number, height?: number) {
-  if (size.width <= 0 || size.height <= 0 || width <= 0) return 1;
-  // Inline diagrams use the transcript's vertical space, not a shrinking height cap.
-  return height === undefined ? Math.min(1, width / size.width) : Math.min(width / size.width, height / size.height);
-}
-
-export type DiagramSize = { width: number; height: number };
-export function validDiagramSize(value: DiagramSize) {
-  return Number.isFinite(value.width) && Number.isFinite(value.height) && value.width > 0 && value.height > 0;
-}
-
-export function zoomAt(current: { zoom: number; x: number; y: number }, next: number, point = { x: 0, y: 0 }) {
-  const ratio = next / current.zoom;
-  return { zoom: next, x: point.x - (point.x - current.x) * ratio, y: point.y - (point.y - current.y) * ratio };
-}
