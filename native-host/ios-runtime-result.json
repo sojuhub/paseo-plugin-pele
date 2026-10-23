@@ -1,0 +1,200 @@
+{
+  "passed" : true,
+  "results" : [
+    {
+      "name" : "Mermaid baseline",
+      "observation" : {
+        "background" : "",
+        "foreignObjects" : 2,
+        "hasSvg" : true,
+        "height" : 174,
+        "text" : " Start Done",
+        "unsafeNodes" : 0,
+        "viewport" : "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+        "width" : 111.875
+      },
+      "passed" : true,
+      "reply" : {
+        "colorScheme" : "light",
+        "height" : 174,
+        "renderer" : "mermaid",
+        "revision" : 1,
+        "source" : "flowchart TD\n A[Start] --> B[Done]",
+        "type" : "rendered",
+        "width" : 112
+      }
+    },
+    {
+      "name" : "Pele Korean flowchart",
+      "observation" : {
+        "background" : "#fff",
+        "foreignObjects" : 0,
+        "hasSvg" : true,
+        "height" : 260,
+        "text" : "주문 접수 포장 배송",
+        "unsafeNodes" : 0,
+        "viewport" : "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+        "width" : 113
+      },
+      "passed" : true,
+      "reply" : {
+        "colorScheme" : "light",
+        "height" : 260,
+        "renderer" : "pele",
+        "revision" : 2,
+        "source" : "flowchart TD\n A[주문 접수] --> B[포장] --> C[배송]",
+        "type" : "rendered",
+        "width" : 113
+      }
+    },
+    {
+      "name" : "Pele Korean mindmap",
+      "observation" : {
+        "background" : "#1b1b1b",
+        "foreignObjects" : 0,
+        "hasSvg" : true,
+        "height" : 115,
+        "text" : "주문 접수 완료 수량 확인 포장 진행 중 배송 포장 후 출발 오늘 굴 주문",
+        "unsafeNodes" : 0,
+        "viewport" : "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+        "width" : 590
+      },
+      "passed" : true,
+      "reply" : {
+        "colorScheme" : "dark",
+        "height" : 115,
+        "renderer" : "pele",
+        "revision" : 3,
+        "source" : "mindmap\n  root((오늘 굴 주문))\n    주문 접수\n      완료\n      수량 확인\n    포장\n      진행 중\n    배송\n      포장 후 출발",
+        "type" : "rendered",
+        "width" : 590
+      }
+    },
+    {
+      "name" : "Pele sequence",
+      "observation" : {
+        "background" : "#fff",
+        "foreignObjects" : 0,
+        "hasSvg" : true,
+        "height" : 204,
+        "text" : "Hello Done Alice Bob Alice Bob",
+        "unsafeNodes" : 0,
+        "viewport" : "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+        "width" : 188
+      },
+      "passed" : true,
+      "reply" : {
+        "colorScheme" : "light",
+        "height" : 204,
+        "renderer" : "pele",
+        "revision" : 4,
+        "source" : "sequenceDiagram\n Alice->>Bob: Hello\n Bob-->>Alice: Done",
+        "type" : "rendered",
+        "width" : 188
+      }
+    },
+    {
+      "name" : "Pele malformed source",
+      "passed" : true,
+      "reply" : {
+        "renderer" : "pele",
+        "revision" : 5,
+        "type" : "renderError"
+      }
+    },
+    {
+      "name" : "Pele fullscreen viewport and recovery",
+      "observation" : {
+        "background" : "#fff",
+        "foreignObjects" : 0,
+        "hasSvg" : true,
+        "height" : 162,
+        "text" : "Recovered Ready",
+        "unsafeNodes" : 0,
+        "viewport" : "width=device-width, initial-scale=1, maximum-scale=8",
+        "width" : 127
+      },
+      "passed" : true,
+      "reply" : {
+        "colorScheme" : "light",
+        "height" : 162,
+        "renderer" : "pele",
+        "revision" : 6,
+        "source" : "flowchart TD\n A[Recovered] --> B[Ready]",
+        "type" : "rendered",
+        "width" : 127
+      }
+    },
+    {
+      "name" : "Mermaid after Pele",
+      "observation" : {
+        "background" : "#fff",
+        "foreignObjects" : 2,
+        "hasSvg" : true,
+        "height" : 174,
+        "text" : " Recovered Ready",
+        "unsafeNodes" : 0,
+        "viewport" : "width=device-width, initial-scale=1, maximum-scale=8",
+        "width" : 150.328125
+      },
+      "passed" : true,
+      "reply" : {
+        "colorScheme" : "light",
+        "height" : 174,
+        "renderer" : "mermaid",
+        "revision" : 7,
+        "source" : "flowchart TD\n A[Recovered] --> B[Ready]",
+        "type" : "rendered",
+        "width" : 151
+      }
+    },
+    {
+      "name" : "Pele links disabled",
+      "observation" : {
+        "background" : "#fff",
+        "foreignObjects" : 0,
+        "hasSvg" : true,
+        "height" : 162,
+        "text" : "Safe Done",
+        "unsafeNodes" : 0,
+        "viewport" : "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+        "width" : 88
+      },
+      "passed" : true,
+      "reply" : {
+        "colorScheme" : "light",
+        "height" : 162,
+        "renderer" : "pele",
+        "revision" : 8,
+        "source" : "flowchart TD\n A[Safe] --> B[Done]\n click A \"https:\/\/example.com\"",
+        "type" : "rendered",
+        "width" : 88
+      }
+    },
+    {
+      "name" : "Pele final Korean mindmap",
+      "observation" : {
+        "background" : "#1b1b1b",
+        "foreignObjects" : 0,
+        "hasSvg" : true,
+        "height" : 115,
+        "text" : "주문 접수 완료 수량 확인 포장 진행 중 배송 포장 후 출발 오늘 굴 주문",
+        "unsafeNodes" : 0,
+        "viewport" : "width=device-width, initial-scale=1, maximum-scale=8",
+        "width" : 590
+      },
+      "passed" : true,
+      "reply" : {
+        "colorScheme" : "dark",
+        "height" : 115,
+        "renderer" : "pele",
+        "revision" : 9,
+        "source" : "mindmap\n  root((오늘 굴 주문))\n    주문 접수\n      완료\n      수량 확인\n    포장\n      진행 중\n    배송\n      포장 후 출발",
+        "type" : "rendered",
+        "width" : 590
+      }
+    }
+  ],
+  "scope" : "iOS simulator WKWebView runtime, not full Paseo React Native UI or physical iPhone",
+  "systemVersion" : "26.5"
+}

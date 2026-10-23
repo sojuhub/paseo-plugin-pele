@@ -1,0 +1,1037 @@
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -29754,6 +29754,15 @@
+         "url": "https://github.com/sponsors/jet2jet"
+       }
+     },
++    "node_modules/pele": {
++      "version": "1.7.0",
++      "resolved": "https://registry.npmjs.org/pele/-/pele-1.7.0.tgz",
++      "integrity": "sha512-nkYb5VnxsTgwD4NThF6j4pJEC4AhGLJ9ptiL4q/vIzGr9q6ZtoRE3hFr94LgHpZ/xy56d1pw42UAQGaZkjM5XA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=20"
++      }
++    },
+     "node_modules/picocolors": {
+       "version": "1.1.1",
+       "resolved": "https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz",
+@@ -36482,6 +36491,7 @@
+         "markdown-it": "^10.0.0",
+         "mermaid": "^11.16.0",
+         "mnemonic-id": "^3.2.7",
++        "pele": "1.7.0",
+         "qrcode": "^1.5.4",
+         "react": "19.1.0",
+         "react-dom": "19.1.0",
+--- a/packages/app/package.json
++++ b/packages/app/package.json
+@@ -105,6 +105,7 @@
+     "lucide-react-native": "^1.50.0",
+     "markdown-it": "^10.0.0",
+     "mermaid": "^11.16.0",
++    "pele": "1.7.0",
+     "mnemonic-id": "^3.2.7",
+     "qrcode": "^1.5.4",
+     "react": "19.1.0",
+--- /dev/null
++++ b/packages/app/src/components/markdown/fence/README.md
+@@ -0,0 +1,8 @@
++# Markdown diagram fences
++
++`MarkdownFenceBlock` routes fenced code by the language token in the Markdown renderer's `sourceInfo`:
++
++- `mermaid` uses Mermaid's engine and its existing source policy.
++- `pele` uses the pinned `pele` renderer inside the same sandboxed WebView and preview/fullscreen host. The runtime disables links and images and caps input, output, and edges.
++
++The runtime HTML is generated from `mermaid/runtime/entry.ts` for both renderers. Rebuild it with `npm run build:mermaid-runtime --workspace=@getpaseo/app` after changing the runtime entry. Native apps need a fresh host build to receive renderer or routing changes.
+--- /dev/null
++++ b/packages/app/src/components/markdown/fence/index.test.tsx
+@@ -0,0 +1,49 @@
++import { describe, expect, it, vi } from "vitest";
++import MarkdownIt from "markdown-it";
++import { MarkdownFenceBlock } from "./index";
++import { PeleFence } from "./pele";
++import { MermaidFence } from "./mermaid";
++import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
++
++vi.mock("@/components/highlighted-code-block", () => ({
++  HighlightedCodeBlock: () => null,
++}));
++vi.mock("./mermaid", () => ({ MermaidFence: () => null }));
++vi.mock("./pele", () => ({ PeleFence: () => null }));
++
++describe("Markdown diagram fence routing", () => {
++  it.each([
++    ["MERMAID title", MermaidFence],
++    ["PELE title", PeleFence],
++  ])("routes a %s fence parsed from Markdown to its renderer", (info, renderer) => {
++    const [fence] = new MarkdownIt()
++      .parse(`\`\`\`${info}\nflowchart LR\nA --> B\n\`\`\``, {})
++      .filter((token) => token.type === "fence");
++    expect(fence).toBeDefined();
++
++    const element = MarkdownFenceBlock({
++      code: fence!.content,
++      info: fence!.info,
++      phase: "complete",
++      inheritedStyles: {},
++      textStyle: {},
++    });
++
++    expect(element).toMatchObject({ type: renderer });
++  });
++
++  it("keeps ordinary fenced code on the highlighted source path", () => {
++    const [fence] = new MarkdownIt()
++      .parse("```ts\nconst answer = 42\n```", {})
++      .filter((token) => token.type === "fence");
++    const element = MarkdownFenceBlock({
++      code: fence!.content,
++      info: fence!.info,
++      phase: "complete",
++      inheritedStyles: {},
++      textStyle: {},
++    });
++
++    expect(element).toMatchObject({ type: HighlightedCodeBlock, props: { language: "ts" } });
++  });
++});
+--- a/packages/app/src/components/markdown/fence/index.tsx
++++ b/packages/app/src/components/markdown/fence/index.tsx
+@@ -2,6 +2,7 @@
+ import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
+ import { getMarkdownFenceLanguage } from "./language";
+ import { MermaidFence } from "./mermaid";
++import { PeleFence } from "./pele";
+ import type { MarkdownFenceRendererProps } from "./types";
+ 
+ export interface MarkdownFenceBlockProps extends MarkdownFenceRendererProps {
+@@ -10,6 +11,7 @@
+ 
+ const diagramFences: Partial<Record<string, ComponentType<MarkdownFenceRendererProps>>> = {
+   mermaid: MermaidFence,
++  pele: PeleFence,
+ };
+ 
+ export function MarkdownFenceBlock({
+--- a/packages/app/src/components/markdown/fence/mermaid/fullscreen-viewer.web.tsx
++++ b/packages/app/src/components/markdown/fence/mermaid/fullscreen-viewer.web.tsx
+@@ -8,10 +8,11 @@
+ import { SPACING } from "@/styles/theme";
+ import { WindowChromeRootRegion } from "@/utils/desktop-window";
+ import { MermaidIframeRuntime, type MermaidRenderedMessage } from "./iframe-runtime.web";
+-import type { DiagramColorScheme } from "./render-model";
++import type { DiagramColorScheme, DiagramRenderer } from "./render-model";
+ import { useMermaidRenderModel } from "./use-render-model";
+ 
+ interface MermaidFullscreenViewerProps {
++  renderer: DiagramRenderer;
+   source: string;
+   colorScheme: DiagramColorScheme;
+   onClose: () => void;
+@@ -23,6 +24,7 @@
+ const VIEWER_FIT = { padding: SPACING[6] };
+ 
+ export function MermaidFullscreenViewer({
++  renderer,
+   source,
+   colorScheme,
+   onClose,
+@@ -30,6 +32,7 @@
+   const { t } = useTranslation();
+   const insets = useSafeAreaInsets();
+   const { state, request, rendered, renderFailed } = useMermaidRenderModel({
++    renderer,
+     source,
+     phase: "complete",
+     colorScheme,
+@@ -38,6 +41,7 @@
+     (message: MermaidRenderedMessage) => {
+       rendered({
+         revision: message.revision,
++        renderer: message.renderer,
+         source: message.source,
+         colorScheme: message.colorScheme,
+         dimensions: { height: message.height, width: message.width },
+--- a/packages/app/src/components/markdown/fence/mermaid/host.native.tsx
++++ b/packages/app/src/components/markdown/fence/mermaid/host.native.tsx
+@@ -15,7 +15,7 @@
+ import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
+ import type { Theme } from "@/styles/theme";
+ import type { MarkdownFenceRendererProps } from "../types";
+-import type { MermaidRenderRequest } from "./render-model";
++import type { DiagramRenderer, MermaidRenderRequest } from "./render-model";
+ import { mermaidRuntimeHtml } from "./runtime/html.gen";
+ import {
+   parseMermaidRuntimeMessage,
+@@ -27,6 +27,7 @@
+ import { getDiagramBoxStyle } from "./presentation";
+ 
+ interface MermaidFenceHostImplProps extends MarkdownFenceRendererProps {
++  renderer?: DiagramRenderer;
+   colorScheme?: "light" | "dark";
+ }
+ 
+@@ -38,13 +39,14 @@
+   request: MermaidRenderRequest | null;
+   interactive: boolean;
+   onRendered: (message: {
++    renderer: DiagramRenderer;
+     revision: number;
+     source: string;
+     colorScheme: "light" | "dark";
+     height: number;
+     width: number;
+   }) => void;
+-  onRenderFailed: (revision: number) => void;
++  onRenderFailed: (renderer: DiagramRenderer, revision: number) => void;
+   style?: ViewStyle;
+ }
+ 
+@@ -66,6 +68,7 @@
+       }
+       const message: MermaidRuntimeRenderMessage = {
+         type: "render",
++        renderer: current.renderer,
+         revision: current.revision,
+         source: current.source,
+         colorScheme: current.colorScheme,
+@@ -100,7 +103,7 @@
+         return;
+       }
+       if (message.type === "renderError") {
+-        onRenderFailed(message.revision);
++        onRenderFailed(message.renderer, message.revision);
+         sendRequest(driverRef.current?.settled(message.revision, false) ?? null);
+         return;
+       }
+@@ -137,6 +140,7 @@
+ });
+ 
+ interface MermaidDiagramViewerProps {
++  renderer: DiagramRenderer;
+   code: string;
+   colorScheme: "light" | "dark";
+   onClose: () => void;
+@@ -145,6 +149,7 @@
+ }
+ 
+ function MermaidDiagramViewer({
++  renderer,
+   code,
+   colorScheme,
+   onClose,
+@@ -155,12 +160,14 @@
+   const [showSource, setShowSource] = useState(false);
+   const toggleSource = useCallback(() => setShowSource((current) => !current), []);
+   const { request, rendered, renderFailed } = useMermaidRenderModel({
++    renderer,
+     source: code,
+     phase: "complete",
+     colorScheme,
+   });
+   const handleRendered = useCallback(
+     (message: {
++      renderer: DiagramRenderer;
+       revision: number;
+       source: string;
+       colorScheme: "light" | "dark";
+@@ -168,6 +175,7 @@
+       width: number;
+     }) => {
+       rendered({
++        renderer: message.renderer,
+         revision: message.revision,
+         source: message.source,
+         colorScheme: message.colorScheme,
+@@ -195,7 +203,7 @@
+             >
+               <HighlightedCodeBlock
+                 code={code}
+-                language="mermaid"
++                language={renderer}
+                 inheritedStyles={inheritedStyles}
+                 textStyle={textStyle}
+               />
+@@ -273,12 +281,14 @@
+ function MermaidFenceHostImpl({
+   code,
+   phase,
++  renderer = "mermaid",
+   inheritedStyles,
+   textStyle,
+   colorScheme = "dark",
+ }: MermaidFenceHostImplProps) {
+   const { t } = useTranslation();
+   const { state, request, rendered, renderFailed } = useMermaidRenderModel({
++    renderer,
+     source: code,
+     phase,
+     colorScheme,
+@@ -286,6 +296,7 @@
+   const [hasRuntimeContent, setHasRuntimeContent] = useState(false);
+   const handleRendered = useCallback(
+     (message: {
++      renderer: DiagramRenderer;
+       revision: number;
+       source: string;
+       colorScheme: "light" | "dark";
+@@ -294,6 +305,7 @@
+     }) => {
+       setHasRuntimeContent(true);
+       rendered({
++        renderer: message.renderer,
+         revision: message.revision,
+         source: message.source,
+         colorScheme: message.colorScheme,
+@@ -306,7 +318,7 @@
+   const openViewer = useCallback(() => setViewerOpen(true), []);
+   const closeViewer = useCallback(() => setViewerOpen(false), []);
+   const visible = state.visible;
+-  const canShowDiagram = visible !== null && hasRuntimeContent;
++  const canShowDiagram = state.renderer === renderer && visible !== null && hasRuntimeContent;
+   const previewInnerStyle = useMemo(
+     () =>
+       canShowDiagram && visible
+@@ -321,7 +333,7 @@
+       {!canShowDiagram ? (
+         <HighlightedCodeBlock
+           code={code}
+-          language="mermaid"
++          language={renderer}
+           inheritedStyles={inheritedStyles}
+           textStyle={textStyle}
+         />
+@@ -348,6 +360,7 @@
+       </Pressable>
+       {viewerOpen && canShowDiagram && visible ? (
+         <MermaidDiagramViewer
++          renderer={renderer}
+           code={visible.source}
+           colorScheme={visible.colorScheme}
+           onClose={closeViewer}
+@@ -374,6 +387,6 @@
+ const mapColorScheme = (theme: Theme) => ({ colorScheme: theme.colorScheme });
+ const ThemedMermaidFenceHost = withUnistyles(MermaidFenceHostImpl);
+ 
+-export function MermaidFenceHost(props: MarkdownFenceRendererProps) {
++export function MermaidFenceHost(props: MarkdownFenceRendererProps & { renderer?: DiagramRenderer }) {
+   return <ThemedMermaidFenceHost {...props} uniProps={mapColorScheme} />;
+ }
+--- a/packages/app/src/components/markdown/fence/mermaid/host.tsx
++++ b/packages/app/src/components/markdown/fence/mermaid/host.tsx
+@@ -1,11 +1,17 @@
+ import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
+ import type { MarkdownFenceRendererProps } from "../types";
++import type { DiagramRenderer } from "./render-model";
+ 
+-export function MermaidFenceHost({ code, inheritedStyles, textStyle }: MarkdownFenceRendererProps) {
++export function MermaidFenceHost({
++  code,
++  inheritedStyles,
++  textStyle,
++  renderer = "mermaid",
++}: MarkdownFenceRendererProps & { renderer?: DiagramRenderer }) {
+   return (
+     <HighlightedCodeBlock
+       code={code}
+-      language="mermaid"
++      language={renderer === "pele" ? "pele" : "mermaid"}
+       inheritedStyles={inheritedStyles}
+       textStyle={textStyle}
+     />
+--- a/packages/app/src/components/markdown/fence/mermaid/host.web.tsx
++++ b/packages/app/src/components/markdown/fence/mermaid/host.web.tsx
+@@ -7,24 +7,28 @@
+ import { ZoomableViewport } from "@/components/zoomable-viewport";
+ import type { Theme } from "@/styles/theme";
+ import type { MarkdownFenceRendererProps } from "../types";
++import type { DiagramRenderer } from "./render-model";
+ import { MermaidFullscreenViewer } from "./fullscreen-viewer.web";
+ import { MermaidIframeRuntime, type MermaidRenderedMessage } from "./iframe-runtime.web";
+ import { useMermaidRenderModel } from "./use-render-model";
+ import { getDiagramBoxStyle } from "./presentation";
+ 
+ interface MermaidFenceHostImplProps extends MarkdownFenceRendererProps {
++  renderer?: DiagramRenderer;
+   colorScheme?: "light" | "dark";
+ }
+ 
+ function MermaidFenceHostImpl({
+   code,
+   phase,
++  renderer = "mermaid",
+   inheritedStyles,
+   textStyle,
+   colorScheme = "dark",
+ }: MermaidFenceHostImplProps) {
+   const { t } = useTranslation();
+   const { state, request, rendered, renderFailed } = useMermaidRenderModel({
++    renderer,
+     source: code,
+     phase,
+     colorScheme,
+@@ -41,6 +45,7 @@
+       setHasRuntimeContent(true);
+       rendered({
+         revision: message.revision,
++        renderer: message.renderer,
+         source: message.source,
+         colorScheme: message.colorScheme,
+         dimensions: { height: message.height, width: message.width },
+@@ -49,7 +54,7 @@
+     [rendered],
+   );
+   const visible = state.visible;
+-  const canShowDiagram = visible !== null && hasRuntimeContent;
++  const canShowDiagram = state.renderer === renderer && visible !== null && hasRuntimeContent;
+   const diagramVisible = canShowDiagram && !showSource;
+   const runtimeHeight = Math.max(visible?.height ?? 240, 1);
+   const actions = useMemo(
+@@ -100,7 +105,7 @@
+         <View style={sourceContainer}>
+           <HighlightedCodeBlock
+             code={code}
+-            language="mermaid"
++            language={renderer}
+             inheritedStyles={inheritedStyles}
+             textStyle={sourceTextStyle}
+           />
+@@ -139,6 +144,7 @@
+       {isFullscreen && visible ? (
+         <MermaidFullscreenViewer
+           source={visible.source}
++          renderer={renderer}
+           colorScheme={visible.colorScheme}
+           onClose={closeFullscreen}
+         />
+@@ -188,6 +194,6 @@
+ const mapColorScheme = (theme: Theme) => ({ colorScheme: theme.colorScheme });
+ const ThemedMermaidFenceHost = withUnistyles(MermaidFenceHostImpl);
+ 
+-export function MermaidFenceHost(props: MarkdownFenceRendererProps) {
++export function MermaidFenceHost(props: MarkdownFenceRendererProps & { renderer?: DiagramRenderer }) {
+   return <ThemedMermaidFenceHost {...props} uniProps={mapColorScheme} />;
+ }
+--- a/packages/app/src/components/markdown/fence/mermaid/iframe-runtime.web.tsx
++++ b/packages/app/src/components/markdown/fence/mermaid/iframe-runtime.web.tsx
+@@ -1,10 +1,11 @@
+ import { useCallback, useEffect, useRef } from "react";
+-import type { DiagramColorScheme, MermaidRenderRequest } from "./render-model";
++import type { DiagramColorScheme, DiagramRenderer, MermaidRenderRequest } from "./render-model";
+ import { mermaidRuntimeHtml } from "./runtime/html.gen";
+ import { parseMermaidRuntimeMessage, type MermaidRuntimeRenderMessage } from "./runtime/messages";
+ import { MermaidRuntimeRequestDriver } from "./runtime/request-driver";
+ 
+ export interface MermaidRenderedMessage {
++  renderer: DiagramRenderer;
+   revision: number;
+   source: string;
+   colorScheme: DiagramColorScheme;
+@@ -15,7 +16,7 @@
+ interface MermaidIframeRuntimeProps {
+   request: MermaidRenderRequest | null;
+   onRendered: (message: MermaidRenderedMessage) => void;
+-  onRenderFailed: (revision: number) => void;
++  onRenderFailed: (renderer: DiagramRenderer, revision: number) => void;
+ }
+ 
+ /** Sandboxed Mermaid renderer. Sizing and gestures belong to the surrounding viewport. */
+@@ -33,6 +34,7 @@
+     if (!current || !target) return;
+     const message: MermaidRuntimeRenderMessage = {
+       type: "render",
++      renderer: current.renderer,
+       revision: current.revision,
+       source: current.source,
+       colorScheme: current.colorScheme,
+@@ -55,7 +57,7 @@
+         return;
+       }
+       if (message.type === "renderError") {
+-        onRenderFailed(message.revision);
++        onRenderFailed(message.renderer, message.revision);
+         sendRequest(driverRef.current?.settled(message.revision, false) ?? null);
+         return;
+       }
+--- a/packages/app/src/components/markdown/fence/mermaid/render-model.test.ts
++++ b/packages/app/src/components/markdown/fence/mermaid/render-model.test.ts
+@@ -9,6 +9,7 @@
+ 
+ function input(overrides: Partial<MermaidRenderInput> = {}): MermaidRenderInput {
+   return {
++    renderer: "mermaid",
+     source: "flowchart TD\nA --> B",
+     phase: "streaming",
+     colorScheme: "dark",
+@@ -21,6 +22,7 @@
+ function renderCurrent(state: MermaidRenderModel): MermaidRenderModel {
+   return reduceMermaidRenderModel(state, {
+     type: "rendered",
++    renderer: state.renderer,
+     revision: state.revision,
+     source: state.source,
+     colorScheme: state.colorScheme,
+@@ -49,6 +51,7 @@
+     });
+     const failed = reduceMermaidRenderModel(pending, {
+       type: "renderFailed",
++      renderer: pending.renderer,
+       revision: pending.revision,
+     });
+ 
+@@ -64,6 +67,7 @@
+     });
+     const failed = reduceMermaidRenderModel(pending, {
+       type: "renderFailed",
++      renderer: pending.renderer,
+       revision: pending.revision,
+     });
+     const complete = reduceMermaidRenderModel(failed, {
+@@ -87,6 +91,7 @@
+     });
+     const failed = reduceMermaidRenderModel(completePending, {
+       type: "renderFailed",
++      renderer: completePending.renderer,
+       revision: completePending.revision,
+     });
+ 
+@@ -101,6 +106,7 @@
+     });
+     const obsolete = reduceMermaidRenderModel(newer, {
+       type: "rendered",
++      renderer: initial.renderer,
+       revision: initial.revision,
+       source: initial.source,
+       colorScheme: initial.colorScheme,
+@@ -109,12 +115,44 @@
+ 
+     expect(obsolete).toBe(newer);
+     expect(getMermaidRenderRequest(obsolete)).toEqual({
++      renderer: "mermaid",
+       revision: newer.revision,
+       source: "flowchart TD\nA --> C",
+       colorScheme: "dark",
+     });
+   });
+ 
++  it("does not reuse or accept a Mermaid result as a Pele render", () => {
++    const mermaid = renderCurrent(createMermaidRenderModel(input()));
++    const pelePending = reduceMermaidRenderModel(mermaid, {
++      type: "inputChanged",
++      input: input({ renderer: "pele", cached: null }),
++    });
++    const stale = reduceMermaidRenderModel(pelePending, {
++      type: "rendered",
++      renderer: "mermaid",
++      revision: pelePending.revision,
++      source: pelePending.source,
++      colorScheme: pelePending.colorScheme,
++      dimensions: { height: 80, width: 180 },
++    });
++
++    expect(pelePending.visible).toBeNull();
++    expect(stale).toBe(pelePending);
++    expect(getMermaidRenderRequest(pelePending)?.renderer).toBe("pele");
++  });
++
++  it("ignores a render error from a different renderer", () => {
++    const pelePending = createMermaidRenderModel(input({ renderer: "pele" }));
++    const staleError = reduceMermaidRenderModel(pelePending, {
++      type: "renderFailed",
++      renderer: "mermaid",
++      revision: pelePending.revision,
++    });
++
++    expect(staleError).toBe(pelePending);
++  });
++
+   it("uses an obsolete successful prefix as the first streaming preview", () => {
+     const initial = createMermaidRenderModel(input());
+     const newer = reduceMermaidRenderModel(initial, {
+@@ -123,6 +161,7 @@
+     });
+     const preview = reduceMermaidRenderModel(newer, {
+       type: "rendered",
++      renderer: initial.renderer,
+       revision: initial.revision,
+       source: initial.source,
+       colorScheme: initial.colorScheme,
+--- a/packages/app/src/components/markdown/fence/mermaid/render-model.ts
++++ b/packages/app/src/components/markdown/fence/mermaid/render-model.ts
+@@ -1,6 +1,7 @@
+ import type { MarkdownPhase } from "../types";
+ 
+ export type DiagramColorScheme = "light" | "dark";
++export type DiagramRenderer = "mermaid" | "pele";
+ 
+ export interface DiagramDimensions {
+   height: number;
+@@ -8,11 +9,13 @@
+ }
+ 
+ export interface RenderedDiagram extends DiagramDimensions {
++  renderer: DiagramRenderer;
+   source: string;
+   colorScheme: DiagramColorScheme;
+ }
+ 
+ export interface MermaidRenderInput {
++  renderer: DiagramRenderer;
+   source: string;
+   phase: MarkdownPhase;
+   colorScheme: DiagramColorScheme;
+@@ -21,12 +24,14 @@
+ }
+ 
+ export interface MermaidRenderRequest {
++  renderer: DiagramRenderer;
+   revision: number;
+   source: string;
+   colorScheme: DiagramColorScheme;
+ }
+ 
+ export interface MermaidRenderModel {
++  renderer: DiagramRenderer;
+   revision: number;
+   source: string;
+   phase: MarkdownPhase;
+@@ -39,18 +44,22 @@
+   | { type: "inputChanged"; input: MermaidRenderInput }
+   | {
+       type: "rendered";
++      renderer: DiagramRenderer;
+       revision: number;
+       source: string;
+       colorScheme: DiagramColorScheme;
+       dimensions: DiagramDimensions;
+     }
+-  | { type: "renderFailed"; revision: number };
++  | { type: "renderFailed"; renderer: DiagramRenderer; revision: number };
+ 
+ function reduceRendered(
+   state: MermaidRenderModel,
+   action: Extract<MermaidRenderAction, { type: "rendered" }>,
+ ): MermaidRenderModel {
+   if (action.colorScheme !== state.colorScheme) {
++    return state;
++  }
++  if (action.renderer !== state.renderer) {
+     return state;
+   }
+   if (action.revision !== state.revision || action.source !== state.source) {
+@@ -66,6 +75,7 @@
+     return {
+       ...state,
+       visible: {
++        renderer: action.renderer,
+         source: action.source,
+         colorScheme: action.colorScheme,
+         ...action.dimensions,
+@@ -76,6 +86,7 @@
+     ...state,
+     status: "rendered",
+     visible: {
++      renderer: action.renderer,
+       source: action.source,
+       colorScheme: action.colorScheme,
+       ...action.dimensions,
+@@ -87,6 +98,7 @@
+   if (input.rejected) {
+     return {
+       revision: 1,
++      renderer: input.renderer,
+       source: input.source,
+       phase: input.phase,
+       colorScheme: input.colorScheme,
+@@ -96,6 +108,7 @@
+   }
+   return {
+     revision: 1,
++    renderer: input.renderer,
+     source: input.source,
+     phase: input.phase,
+     colorScheme: input.colorScheme,
+@@ -113,7 +126,7 @@
+   }
+ 
+   if (action.type === "renderFailed") {
+-    if (action.revision !== state.revision) {
++    if (action.renderer !== state.renderer || action.revision !== state.revision) {
+       return state;
+     }
+     return {
+@@ -124,7 +137,10 @@
+   }
+ 
+   const { input } = action;
+-  const isSameRender = input.source === state.source && input.colorScheme === state.colorScheme;
++  const isSameRender =
++    input.renderer === state.renderer &&
++    input.source === state.source &&
++    input.colorScheme === state.colorScheme;
+   if (isSameRender) {
+     if (input.phase === state.phase) {
+       return state;
+@@ -140,21 +156,23 @@
+   if (input.rejected) {
+     return {
+       revision: state.revision + 1,
++      renderer: input.renderer,
+       source: input.source,
+       phase: input.phase,
+       colorScheme: input.colorScheme,
+       status: "rejected",
+-      visible: input.phase === "complete" ? null : (input.cached ?? state.visible),
++      visible: input.phase === "complete" ? null : (input.cached ?? (input.renderer === state.renderer ? state.visible : null)),
+     };
+   }
+ 
+   return {
+     revision: state.revision + 1,
++      renderer: input.renderer,
+     source: input.source,
+     phase: input.phase,
+     colorScheme: input.colorScheme,
+     status: "pending",
+-    visible: input.cached ?? state.visible,
++    visible: input.cached ?? (input.renderer === state.renderer ? state.visible : null),
+   };
+ }
+ 
+@@ -163,6 +181,7 @@
+     return null;
+   }
+   return {
++    renderer: state.renderer,
+     revision: state.revision,
+     source: state.source,
+     colorScheme: state.colorScheme,
+--- a/packages/app/src/components/markdown/fence/mermaid/runtime/entry.ts
++++ b/packages/app/src/components/markdown/fence/mermaid/runtime/entry.ts
+@@ -1,4 +1,5 @@
+ import mermaid from "mermaid";
++import { render as renderPele } from "pele";
+ import {
+   parseMermaidRuntimeRenderMessage,
+   type MermaidRuntimeMessage,
+@@ -54,6 +55,25 @@
+     );
+ }
+ 
++function setPeleTheme(colorScheme: "light" | "dark"): void {
++  const colors = colorScheme === "dark"
++    ? { bg: "#1b1b1b", fg: "#ccc", muted: "#aaa", line: "#ccc", surface: "#252525", surfaceAlt: "#302f3d", border: "#777", accent: "#7c9cff" }
++    : { bg: "#fff", fg: "#333", muted: "#666", line: "#333", surface: "#ececff", surfaceAlt: "#ffffde", border: "#9370db", accent: "#5b7bd5" };
++  const variables = {
++    "--pele-bg": colors.bg,
++    "--pele-fg": colors.fg,
++    "--pele-muted": colors.muted,
++    "--pele-line": colors.line,
++    "--pele-surface": colors.surface,
++    "--pele-surface-alt": colors.surfaceAlt,
++    "--pele-border": colors.border,
++    "--pele-accent": colors.accent,
++  };
++  for (const [name, value] of Object.entries(variables)) {
++    document.documentElement.style.setProperty(name, value);
++  }
++}
++
+ let latestRevision = 0;
+ let pendingRender: MermaidRuntimeRenderMessage | null = null;
+ let isRendering = false;
+@@ -96,8 +116,26 @@
+ 
+ async function render(message: MermaidRuntimeRenderMessage): Promise<void> {
+   try {
+-    initializeMermaid(message.colorScheme);
+-    const { svg } = await mermaid.render(`paseo-mermaid-${message.revision}`, message.source);
++    let svg: string;
++    if (message.renderer === "mermaid") {
++      initializeMermaid(message.colorScheme);
++      svg = (await mermaid.render(`paseo-mermaid-${message.revision}`, message.source)).svg;
++    } else {
++      setPeleTheme(message.colorScheme);
++      svg = renderPele(message.source, {
++        fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
++        fontSize: 16,
++        padding: 8,
++        responsive: false,
++        autoDirection: false,
++        config: { flowchart: { nodeSpacing: 50, rankSpacing: 50, padding: 15, curve: "basis" } },
++        images: false,
++        links: false,
++        limit: 50_000,
++        outputLimit: 2_000_000,
++        maxEdges: 1000,
++      }).svg;
++    }
+     if (message.revision !== latestRevision) {
+       return;
+     }
+@@ -114,6 +152,7 @@
+     const size = measureDiagram(host, element);
+     sendToHost({
+       type: "rendered",
++      renderer: message.renderer,
+       revision: message.revision,
+       source: message.source,
+       colorScheme: message.colorScheme,
+@@ -122,7 +161,7 @@
+     });
+   } catch {
+     if (message.revision === latestRevision) {
+-      sendToHost({ type: "renderError", revision: message.revision });
++      sendToHost({ type: "renderError", renderer: message.renderer, revision: message.revision });
+     }
+   }
+ }
+--- a/packages/app/src/components/markdown/fence/mermaid/runtime/messages.ts
++++ b/packages/app/src/components/markdown/fence/mermaid/runtime/messages.ts
+@@ -1,7 +1,8 @@
+-import type { DiagramColorScheme, DiagramDimensions } from "../render-model";
++import type { DiagramColorScheme, DiagramDimensions, DiagramRenderer } from "../render-model";
+ 
+ export interface MermaidRuntimeRenderMessage {
+   type: "render";
++  renderer: DiagramRenderer;
+   revision: number;
+   source: string;
+   colorScheme: DiagramColorScheme;
+@@ -12,11 +13,12 @@
+   | { type: "bridgeReady" }
+   | ({
+       type: "rendered";
++      renderer: DiagramRenderer;
+       revision: number;
+       source: string;
+       colorScheme: DiagramColorScheme;
+     } & DiagramDimensions)
+-  | { type: "renderError"; revision: number };
++  | { type: "renderError"; renderer: DiagramRenderer; revision: number };
+ 
+ function isRecord(value: unknown): value is Record<string, unknown> {
+   return typeof value === "object" && value !== null;
+@@ -26,12 +28,17 @@
+   return value === "light" || value === "dark";
+ }
+ 
++function isRenderer(value: unknown): value is DiagramRenderer {
++  return value === "mermaid" || value === "pele";
++}
++
+ export function parseMermaidRuntimeRenderMessage(
+   value: unknown,
+ ): MermaidRuntimeRenderMessage | null {
+   if (
+     !isRecord(value) ||
+     value.type !== "render" ||
++    !isRenderer(value.renderer) ||
+     typeof value.revision !== "number" ||
+     !Number.isInteger(value.revision) ||
+     typeof value.source !== "string" ||
+@@ -42,6 +49,7 @@
+   }
+   return {
+     type: "render",
++    renderer: value.renderer,
+     revision: value.revision,
+     source: value.source,
+     colorScheme: value.colorScheme,
+@@ -58,13 +66,15 @@
+   }
+   if (
+     value.type === "renderError" &&
++    isRenderer(value.renderer) &&
+     typeof value.revision === "number" &&
+     Number.isInteger(value.revision)
+   ) {
+-    return { type: "renderError", revision: value.revision };
++    return { type: "renderError", renderer: value.renderer, revision: value.revision };
+   }
+   if (
+     value.type === "rendered" &&
++    isRenderer(value.renderer) &&
+     typeof value.revision === "number" &&
+     Number.isInteger(value.revision) &&
+     typeof value.source === "string" &&
+@@ -76,6 +86,7 @@
+   ) {
+     return {
+       type: "rendered",
++      renderer: value.renderer,
+       revision: value.revision,
+       source: value.source,
+       colorScheme: value.colorScheme,
+--- a/packages/app/src/components/markdown/fence/mermaid/runtime/request-driver.test.ts
++++ b/packages/app/src/components/markdown/fence/mermaid/runtime/request-driver.test.ts
+@@ -3,7 +3,7 @@
+ import { MermaidRuntimeRequestDriver } from "./request-driver";
+ 
+ function request(revision: number, source: string): MermaidRenderRequest {
+-  return { revision, source, colorScheme: "dark" };
++  return { renderer: "mermaid", revision, source, colorScheme: "dark" };
+ }
+ 
+ describe("MermaidRuntimeRequestDriver", () => {
+--- a/packages/app/src/components/markdown/fence/mermaid/runtime/runtime.browser.test.ts
++++ b/packages/app/src/components/markdown/fence/mermaid/runtime/runtime.browser.test.ts
+@@ -53,7 +53,7 @@
+ 
+ function render(
+   frame: HTMLIFrameElement,
+-  input: { revision: number; source: string },
++  input: { revision: number; source: string; renderer?: "mermaid" | "pele" },
+ ): Promise<MermaidRuntimeMessage> {
+   const response = waitForRuntimeMessage(
+     frame,
+@@ -65,6 +65,7 @@
+   frame.contentWindow?.postMessage(
+     {
+       type: "render",
++      renderer: input.renderer ?? "mermaid",
+       revision: input.revision,
+       source: input.source,
+       colorScheme: "dark",
+@@ -92,8 +93,25 @@
+     const second = await render(frame, { revision: 3, source: secondSource });
+ 
+     expect(first).toMatchObject({ type: "rendered", revision: 1, source: firstSource });
+-    expect(invalid).toEqual({ type: "renderError", revision: 2 });
++    expect(invalid).toEqual({ type: "renderError", renderer: "mermaid", revision: 2 });
+     expect(second).toMatchObject({ type: "rendered", revision: 3, source: secondSource });
++  });
++
++  it("renders Pele as SVG in the same sandbox runtime", async () => {
++    const frame = await mountRuntime();
++    const source = "flowchart LR\n A[주문 접수] --> B[배송 완료]";
++    const message = await render(frame, { revision: 1, source, renderer: "pele" });
++
++    expect(message).toMatchObject({ type: "rendered", renderer: "pele", revision: 1, source });
++  });
++
++  it("reports invalid Pele source without disturbing the following Mermaid render", async () => {
++    const frame = await mountRuntime();
++    const invalid = await render(frame, { revision: 1, source: "not a diagram", renderer: "pele" });
++    const valid = await render(frame, { revision: 2, source: "flowchart LR\nA --> B" });
++
++    expect(invalid).toEqual({ type: "renderError", renderer: "pele", revision: 1 });
++    expect(valid).toMatchObject({ type: "rendered", renderer: "mermaid", revision: 2 });
+   });
+ 
+   /**
+@@ -130,6 +148,7 @@
+     frame.contentWindow?.postMessage(
+       {
+         type: "render",
++        renderer: "mermaid",
+         revision: 10,
+         source: obsoleteSource,
+         colorScheme: "dark",
+--- a/packages/app/src/components/markdown/fence/mermaid/use-render-model.ts
++++ b/packages/app/src/components/markdown/fence/mermaid/use-render-model.ts
+@@ -4,6 +4,7 @@
+   getMermaidRenderRequest,
+   reduceMermaidRenderModel,
+   type DiagramColorScheme,
++  type DiagramRenderer,
+   type DiagramDimensions,
+   type RenderedDiagram,
+ } from "./render-model";
+@@ -13,12 +14,12 @@
+ const renderCache = new Map<string, RenderedDiagram>();
+ const RENDER_CACHE_LIMIT = 50;
+ 
+-function cacheKey(source: string, colorScheme: DiagramColorScheme): string {
+-  return `${colorScheme}\u0000${source}`;
++function cacheKey(renderer: DiagramRenderer, source: string, colorScheme: DiagramColorScheme): string {
++  return `${renderer}\u0000${colorScheme}\u0000${source}`;
+ }
+ 
+-function readCachedRender(source: string, colorScheme: DiagramColorScheme): RenderedDiagram | null {
+-  return renderCache.get(cacheKey(source, colorScheme)) ?? null;
++function readCachedRender(renderer: DiagramRenderer, source: string, colorScheme: DiagramColorScheme): RenderedDiagram | null {
++  return renderCache.get(cacheKey(renderer, source, colorScheme)) ?? null;
+ }
+ 
+ function cacheRender(rendered: RenderedDiagram): void {
+@@ -28,27 +29,30 @@
+       renderCache.delete(oldest);
+     }
+   }
+-  renderCache.set(cacheKey(rendered.source, rendered.colorScheme), rendered);
++  renderCache.set(cacheKey(rendered.renderer, rendered.source, rendered.colorScheme), rendered);
+ }
+ 
+ export function useMermaidRenderModel({
++  renderer = "mermaid",
+   source,
+   phase,
+   colorScheme,
+ }: {
++  renderer?: DiagramRenderer;
+   source: string;
+   phase: MarkdownPhase;
+   colorScheme: DiagramColorScheme;
+ }) {
+   const renderInput = useMemo(
+     () => ({
++      renderer,
+       source,
+       phase,
+       colorScheme,
+-      rejected: containsUnsafeMermaidSource(source),
+-      cached: readCachedRender(source, colorScheme),
++      rejected: renderer === "mermaid" && containsUnsafeMermaidSource(source),
++      cached: readCachedRender(renderer, source, colorScheme),
+     }),
+-    [colorScheme, phase, source],
++    [colorScheme, phase, renderer, source],
+   );
+   const [state, dispatch] = useReducer(
+     reduceMermaidRenderModel,
+@@ -62,12 +66,14 @@
+ 
+   const rendered = useCallback(
+     (response: {
++      renderer: DiagramRenderer;
+       revision: number;
+       source: string;
+       colorScheme: DiagramColorScheme;
+       dimensions: DiagramDimensions;
+     }) => {
+       const cached: RenderedDiagram = {
++        renderer: response.renderer,
+         source: response.source,
+         colorScheme: response.colorScheme,
+         ...response.dimensions,
+@@ -75,6 +81,7 @@
+       cacheRender(cached);
+       dispatch({
+         type: "rendered",
++        renderer: response.renderer,
+         revision: response.revision,
+         source: response.source,
+         colorScheme: response.colorScheme,
+@@ -83,8 +90,8 @@
+     },
+     [],
+   );
+-  const renderFailed = useCallback((revision: number) => {
+-    dispatch({ type: "renderFailed", revision });
++  const renderFailed = useCallback((failedRenderer: DiagramRenderer, revision: number) => {
++    dispatch({ type: "renderFailed", renderer: failedRenderer, revision });
+   }, []);
+ 
+   return {
+--- /dev/null
++++ b/packages/app/src/components/markdown/fence/pele/index.tsx
+@@ -0,0 +1,6 @@
++import type { MarkdownFenceRendererProps } from "../types";
++import { MermaidFenceHost } from "../mermaid/host";
++
++export function PeleFence(props: MarkdownFenceRendererProps) {
++  return <MermaidFenceHost {...props} renderer="pele" />;
++}

@@ -1,7 +1,9 @@
 {
   "id": "pele",
   "name": "Pele",
-  "media": [],
+  "media": [
+    "images/preview.png"
+  ],
   "requirements": {
     "paseo": ">=0.11.4"
   },

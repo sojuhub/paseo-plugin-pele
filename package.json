@@ -1,6 +1,6 @@
 {
   "name": "paseo-plugin-pele",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",
@@ -14,7 +14,8 @@
     "README.md",
     "example.md",
     "images/",
-    "LICENSE"
+    "LICENSE",
+    "native-host/"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",

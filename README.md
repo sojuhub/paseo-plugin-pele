@@ -29,7 +29,10 @@ Enable plugins in Paseo's settings first. After source changes use
 `paseo plugin reload pele`; no daemon restart is necessary.
 
 Tested with Paseo 0.11.4 on Mac's web client. The desktop app uses the web
-rendering path. Native iOS/Android chat is left to Paseo's original renderer.
+rendering path. Native iOS/Android chat is left to Paseo's original renderer. Installing this plugin
+does not enable native `pele` fences. The [native host patch](native-host/README.md)
+adds that route using Paseo's existing Mermaid WebView shell; it requires rebuilding
+and installing the app. It is not an official mobile release.
 
 ## Use
 
